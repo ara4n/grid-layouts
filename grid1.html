@@ -1,0 +1,45 @@
+<html>
+<head>
+
+<style type="text/css">
+body {
+    background: #222;
+    margin: 10px;
+}
+
+#grid {
+    width: 100%;
+    height: 100%;
+}
+</style>
+
+<script type="text/javascript">
+function onLoad() {
+    const w = 10;
+    const h = 10;
+    const space = 20;
+    let rects = [[]];
+    const svg = document.getElementById("grid");
+    const { width, height } = svg.getBoundingClientRect();
+    for (let x = 0; x < w; x++) {
+        for (let y = 0; y < h; y++) {
+            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect.setAttribute("fill", "#000000");
+            rect.setAttribute("x", (width / w) * x + (space / 2));
+            rect.setAttribute("y", (height / h) * y + (space / 2));
+            rect.setAttribute("width", (width / w) - space);
+            rect.setAttribute("height", (height / h) - space);
+            rect.setAttribute("rx", space/4);
+            svg.appendChild(rect);
+            //rects[x][y] = rect;
+        }
+    }
+}
+</script>
+</head>
+
+<body onload="onLoad()">
+    <svg id="grid" xmlns="http://www.w3.org/2000/svg"/>
+</body>
+
+</html>

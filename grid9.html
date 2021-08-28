@@ -1,0 +1,208 @@
+<html>
+<head>
+
+<style type="text/css">
+body {
+    background: #222;
+    margin: 10px;
+}
+
+#grid {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+.rect {
+  fill: #000;
+  stroke: #000;
+  stroke-width: 20;
+  stroke-linejoin: round;
+}
+
+</style>
+
+<script type="text/javascript">
+
+class Grid {
+    w = 10;
+    h = 10;
+    space = 40;
+    rects = [];
+    svg;
+
+    bbox;
+    segment;
+    focus;
+    mouseX = -1;
+    mouseY = -1;
+
+    init() {
+        this.svg = document.getElementById("grid");
+        for (let x = 0; x < this.w; x++) {
+            this.rects[x] = [];
+            for (let y = 0; y < this.h; y++) {
+                const rect = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                rect.setAttribute("class", "rect");
+                this.svg.appendChild(rect);
+                this.rects[x][y] = rect;
+            }
+        }
+
+        window.requestAnimationFrame(this.layout.bind(this));
+    }
+
+    mousemove(e) {
+        this.mouseX = e.clientX;
+        this.mouseY = e.clientY;
+        //this.layout();
+    }
+
+    layout() {
+        this.bbox = this.svg.getBoundingClientRect();
+
+        const zoom = 2.5;
+        const segWidth = this.bbox.width / this.w;
+        const segHeight = this.bbox.height / this.h;
+
+        // the segment has the coordinates of the undistorted grid segment we're hovering over
+        const segment = {
+            left: segWidth * ((this.mouseX / segWidth)|0) + this.bbox.left,
+            right: segWidth * (1 + (this.mouseX / segWidth)|0) + this.bbox.left,
+            top: segHeight * ((this.mouseY / segHeight)|0) + this.bbox.top,
+            bottom: segHeight * (1 + (this.mouseY / segHeight)|0) + this.bbox.top,
+        };
+        this.segment = segment;
+
+        // the focus is the zoomed segment that we're focusing on
+        const focus = {
+            left: segment.left - (segWidth * (zoom - 1))/2,
+            right: segment.right + (segWidth * (zoom - 1))/2,
+            top: segment.top - (segHeight * (zoom - 1))/2,
+            bottom: segment.bottom + (segHeight * (zoom - 1))/2,
+        };
+        if (focus.left < this.bbox.left)     { focus.right += this.bbox.left - focus.left; focus.left = this.bbox.left; }
+        if (focus.top < this.bbox.top)       { focus.bottom += this.bbox.top - focus.top;  focus.top = this.bbox.top; }
+        if (focus.right > this.bbox.right)   { focus.left += this.bbox.right - focus.right; focus.right = this.bbox.right; }
+        if (focus.bottom > this.bbox.bottom) { focus.top += this.bbox.bottom - focus.bottom; focus.bottom = this.bbox.bottom; }
+        this.focus = focus;
+
+        for (let x = 0; x < this.w; x++) {
+            for (let y = 0; y < this.h; y++) {
+                const rect = this.rects[x][y];
+                const x1 = (this.bbox.width / this.w) * x + (this.space / 2);
+                const y1 = (this.bbox.height / this.h) * y + (this.space / 2);
+                const x2 = x1 + (this.bbox.width / this.w) - this.space;
+                const y2 = y1 + (this.bbox.height / this.h) - this.space;
+
+                rect.p1 = this.warp([x1, y1], rect.p1, true);
+                rect.p2 = this.warp([x2, y1], rect.p2, true);
+                rect.p3 = this.warp([x2, y2], rect.p3, true);
+                rect.p4 = this.warp([x1, y2], rect.p4, true);
+
+                rect.setAttribute("points", `${rect.p1[0]},${rect.p1[1]} ` +
+                                            `${rect.p2[0]},${rect.p2[1]} ` +
+                                            `${rect.p3[0]},${rect.p3[1]} ` +
+                                            `${rect.p4[0]},${rect.p4[1]}`);
+            }
+        }
+
+        window.requestAnimationFrame(this.layout.bind(this));
+    }
+
+    warp(startP, oldP, normalise) {
+        const mx = this.mouseX;
+        const my = this.mouseY;
+
+        if (mx < 0 || my < 0) return startP;
+
+        let x = startP[0];
+        let y = startP[1];
+
+        // if we're within the segment, simply zoom.
+        if (x > this.segment.left && x < this.segment.right &&
+            y > this.segment.top && y < this.segment.bottom)
+        {
+            x = this.focus.left + (this.focus.right - this.focus.left) * ((x - this.segment.left) / (this.segment.right - this.segment.left));
+            y = this.focus.top + (this.focus.bottom - this.focus.top)  * ((y - this.segment.top)  / (this.segment.bottom - this.segment.top));
+        }
+        else {
+            // we subtract the focus area from our calculations...
+            // if (startP[0] > this.segment.right)     x -= (this.segment.right - mx);
+            // else if (startP[0] < this.segment.left) x += (mx - this.segment.left);
+            // if (startP[1] > this.segment.bottom)    y -= (this.segment.bottom - my);
+            // else if (startP[1] < this.segment.top)  y += (my - this.segment.top);
+
+            // we displace the coordinates radially by a vertically flipped
+            // normal distribution: r += 1 - e ^ (-r^2)
+
+            // displace a maximum of ${displacement} pixels around the mouse.
+            const displacement = 200;
+            const r = Math.sqrt((x - mx)**2  + (y - my)**2);
+            const r2 = displacement * (1 - Math.E ** (-(r ** 2)));
+
+            // we add back in the focus area from our calculations...
+            // if (startP[0] > this.segment.right)     x += (this.segment.right - mx);
+            // else if (startP[0] < this.segment.left) x -= (mx - this.segment.left);
+            // if (startP[1] > this.segment.bottom)    y += (this.segment.bottom - my);
+            // else if (startP[1] < this.segment.top)  y -= (my - this.segment.top);
+
+            x += (x - mx) * (r2 / r);
+            y += (y - my) * (r2 / r);
+
+            // re-normalise to fit inside the bbox
+            if (normalise) {
+                const wp1 = this.warp([this.bbox.left, startP[1]],   undefined, false);
+                const wp2 = this.warp([startP[0], this.bbox.top],    undefined, false);
+                const wp3 = this.warp([this.bbox.right, startP[1]],  undefined, false);
+                const wp4 = this.warp([startP[0], this.bbox.bottom], undefined, false);
+
+                if (x < mx) {
+                    x = mx + (x - mx) / ((mx - wp1[0]) / (mx - this.bbox.left));
+                }
+                else {
+                    x = mx + (x - mx) / ((mx - wp3[0]) / (mx - this.bbox.right));
+                }
+                if (y < my) {
+                    y = my + (y - my) / ((my - wp2[1]) / (my - this.bbox.top));
+                }
+                else {
+                    y = my + (y - my) / ((my - wp4[1]) / (my - this.bbox.bottom));
+                }
+            }
+        }
+
+        // tween from the oldP to our newP
+        if (oldP === undefined) {
+            return [x, y];
+        }
+        else {
+            const k = 0.05;
+            return [(1-k)*oldP[0] + k*x, (1-k)*oldP[1] + k*y];
+        }
+    }
+}
+
+const grid = new Grid();
+
+function onLoad() {
+    grid.init();
+    grid.layout();
+}
+
+function onResize() {
+    grid.layout();
+}
+
+function onMouseMove(e) {
+    grid.mousemove(e);
+}
+
+</script>
+</head>
+
+<body onload="onLoad()" onresize="onResize()" onmousemove="onMouseMove(event)">
+    <svg id="grid" xmlns="http://www.w3.org/2000/svg"/>
+</body>
+
+</html>

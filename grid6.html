@@ -1,0 +1,134 @@
+<html>
+<head>
+
+<style type="text/css">
+body {
+    background: #222;
+    margin: 10px;
+}
+
+#grid {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+.rect {
+  fill: #000;
+  stroke: #000;
+  stroke-width: 20;
+  stroke-linejoin: round;
+}
+
+</style>
+
+<script type="text/javascript">
+
+class Grid {
+    w = 10;
+    h = 10;
+    space = 40;
+    rects = [];
+    svg;
+
+    bbox;
+    mouseX = -1;
+    mouseY = -1;
+
+    init() {
+        this.svg = document.getElementById("grid");
+        for (let x = 0; x < this.w; x++) {
+            this.rects[x] = [];
+            for (let y = 0; y < this.h; y++) {
+                const rect = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                rect.setAttribute("class", "rect");
+                this.svg.appendChild(rect);
+                this.rects[x][y] = rect;
+            }
+        }
+
+        window.requestAnimationFrame(this.layout.bind(this));
+    }
+
+    mousemove(e) {
+        this.mouseX = e.clientX;
+        this.mouseY = e.clientY;
+        //this.layout();
+    }
+
+    layout() {
+        this.bbox = this.svg.getBoundingClientRect();
+
+        for (let x = 0; x < this.w; x++) {
+            for (let y = 0; y < this.h; y++) {
+                const rect = this.rects[x][y];
+                const x1 = (this.bbox.width / this.w) * x + (this.space / 2);
+                const y1 = (this.bbox.height / this.h) * y + (this.space / 2);
+                const x2 = x1 + (this.bbox.width / this.w) - this.space;
+                const y2 = y1 + (this.bbox.height / this.h) - this.space;
+
+                rect.p1 = this.warp([x1, y1], rect.p1);
+                rect.p2 = this.warp([x2, y1], rect.p2);
+                rect.p3 = this.warp([x2, y2], rect.p3);
+                rect.p4 = this.warp([x1, y2], rect.p4);
+
+                rect.setAttribute("points", `${rect.p1[0]},${rect.p1[1]} ` +
+                                            `${rect.p2[0]},${rect.p2[1]} ` +
+                                            `${rect.p3[0]},${rect.p3[1]} ` +
+                                            `${rect.p4[0]},${rect.p4[1]}`);
+            }
+        }
+
+        window.requestAnimationFrame(this.layout.bind(this));
+    }
+
+    warp(startP, oldP) {
+        const mx = this.mouseX;
+        const my = this.mouseY;
+
+        if (mx < 0 || my < 0) return startP;
+
+        // we displace the coordinates radially by a vertically flipped
+        // normal distribution: r += 1 - e ^ (-r^2)
+
+        // displace a maximum of ${focus} pixels around the mouse.
+        let x = startP[0];
+        let y = startP[1];
+        const focus = 100;
+        const r = Math.sqrt((x - mx)**2  + (y - my)**2);
+        const r2 = focus * (1 - Math.E ** (-(r ** 2)));
+
+        x += (x - mx) * (r2 / r);
+        y += (y - my) * (r2 / r);
+
+        // TODO: re-normalise to fit inside the bbox
+
+        // tween from the oldP to our newP
+        const k = 0.05;
+        return [(1-k)*oldP[0] + k*x, (1-k)*oldP[1] + k*y];
+    }
+}
+
+const grid = new Grid();
+
+function onLoad() {
+    grid.init();
+    grid.layout();
+}
+
+function onResize() {
+    grid.layout();
+}
+
+function onMouseMove(e) {
+    grid.mousemove(e);
+}
+
+</script>
+</head>
+
+<body onload="onLoad()" onresize="onResize()" onmousemove="onMouseMove(event)">
+    <svg id="grid" xmlns="http://www.w3.org/2000/svg"/>
+</body>
+
+</html>
