@@ -1,389 +1,403 @@
 <html>
-<head>
+    <head>
+        <style type="text/css">
+            body {
+                background: #444;
+                margin: 10px;
+            }
 
-<style type="text/css">
-body {
-    background: #444;
-    margin: 10px;
-}
+            #grid {
+                width: 100%;
+                height: 100%;
+                position: relative;
+            }
 
-#grid {
-    width: 100%;
-    height: 100%;
-    position: relative;
-}
-
-.rect {
-    fill: #000;
-    /*
+            .rect {
+                fill: #000;
+                /*
     stroke: #000;
     stroke-width: 20;
     stroke-linejoin: round;
     */
-    opacity: 50%;
-}
-
-#segment_rect {
-    stroke: #f00;
-    fill: none;
-    opacity: 50%;
-}
-
-#focus_rect {
-    stroke: #0f0;
-    fill: none;
-    opacity: 50%;
-}
-
-#bbox_rect {
-    stroke: #00f;
-    fill: none;
-}
-
-#point {
-    fill: #f00;
-}
-
-circle {
-    stroke: none;
-}
-
-</style>
-
-<script type="text/javascript">
-
-class Grid {
-    w = 9;
-    h = 9;
-    space = 1;
-    rects = [];
-    svg;
-    MAX_CONVERGE = 100;
-    converge = this.MAX_CONVERGE;
-
-    bbox;
-    segment;
-    focus;
-    mouseX = -1;
-    mouseY = -1;
-
-    segment_rect;
-    focus_rect;
-    bbox_rect;
-    start_point
-    point;
-    ip_point;
-    op_point;
-    fip_point;
-    wip_point;
-    wop_point;
-    ray;
-
-    init() {
-        this.svg = document.getElementById("grid");
-        for (let x = 0; x < this.w; x++) {
-            this.rects[x] = [];
-            for (let y = 0; y < this.h; y++) {
-                const rect = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-                rect.setAttribute("class", "rect");
-                this.svg.appendChild(rect);
-                this.rects[x][y] = rect;
-            }
-        }
-
-        this.segment_rect = document.getElementById("segment_rect");
-        this.focus_rect = document.getElementById("focus_rect");
-        this.bbox_rect = document.getElementById("bbox_rect");
-        this.start_point = document.getElementById("start_point");
-        this.point = document.getElementById("point");
-        this.ip_point = document.getElementById("ip_point");
-        this.op_point = document.getElementById("op_point");
-        this.fip_point = document.getElementById("fip_point");
-        this.wip_point = document.getElementById("wip_point");
-        this.wop_point = document.getElementById("wop_point");
-        this.ray = document.getElementById("ray");
-
-        window.requestAnimationFrame(this.layout.bind(this));
-    }
-
-    mousemove(e) {
-        // make the cursor relative to the top left of the bbox
-        this.mouseX = e.clientX - 10;
-        this.mouseY = e.clientY - 10;
-
-        if (this.mouseY < this.bbox.height / this.h) this.mouseY = 0;
-        if (this.mouseY > (this.h - 1) * this.bbox.height / this.h) this.mouseY = this.bbox.height - 1;
-        if (this.mouseX < this.bbox.width / this.w) this.mouseX = 0;
-        if (this.mouseX > (this.w - 1) * this.bbox.width / this.w) this.mouseX = this.bbox.width - 1;
-
-        //console.log(this.mouseX, this.mouseY, this.converge);
-        if (this.converge > 0) {
-            this.converge = this.MAX_CONVERGE;
-        }
-        else {
-            this.converge = this.MAX_CONVERGE;
-            this.layout();
-        }
-    }
-
-    layout() {
-        const debug = false;
-
-        const bbox = this.svg.getBoundingClientRect();
-        this.bbox = {
-            right: bbox.right - bbox.left,
-            bottom: bbox.bottom - bbox.top,
-            left: 0,
-            top: 0,
-            width: bbox.right - bbox.left,
-            height: bbox.bottom - bbox.top,
-        }
-
-        if (debug) {
-            this.bbox_rect.setAttribute("x", this.bbox.left);
-            this.bbox_rect.setAttribute("y", this.bbox.top);
-            this.bbox_rect.setAttribute("width", this.bbox.width);
-            this.bbox_rect.setAttribute("height", this.bbox.height);
-        }
-
-        const zoom = 2;
-        const segWidth = this.bbox.width / this.w;
-        const segHeight = this.bbox.height / this.h;
-
-        // the segment has the coordinates of the undistorted grid segment we're hovering over
-        const segment = {
-            left:   segWidth  * ((this.mouseX / segWidth)|0),
-            right:  segWidth  * (1 + (this.mouseX / segWidth)|0),
-            top:    segHeight * ((this.mouseY / segHeight)|0),
-            bottom: segHeight * (1 + (this.mouseY / segHeight)|0),
-        };
-        this.segment = segment;
-
-        // the focus is the zoomed segment that we're focusing on
-        const focus = {
-            left:   segment.left   - (segWidth  * (zoom - 1))/2,
-            right:  segment.right  + (segWidth  * (zoom - 1))/2,
-            top:    segment.top    - (segHeight * (zoom - 1))/2,
-            bottom: segment.bottom + (segHeight * (zoom - 1))/2,
-        };
-        if (focus.left < this.bbox.left) {
-            const shift = this.bbox.left - focus.left - this.space*zoom/3;
-            focus.left += shift; focus.right += shift;
-        }
-        if (focus.top < this.bbox.top) {
-            const shift = this.bbox.top - focus.top - this.space*zoom/3;
-            focus.top += shift; focus.bottom += shift;
-        }
-        if (focus.right > this.bbox.right) {
-            const shift = this.bbox.right - focus.right + this.space*zoom/3;
-            focus.left += shift; focus.right += shift;
-        }
-        if (focus.bottom > this.bbox.bottom - this.bbox.top) {
-            const shift = this.bbox.bottom - focus.bottom + this.space*zoom/3;
-            focus.top += shift; focus.bottom += shift;
-        }
-        this.focus = focus;
-
-        if (debug) {
-            this.segment_rect.setAttribute("x", segment.left);
-            this.segment_rect.setAttribute("y", segment.top);
-            this.segment_rect.setAttribute("width", segment.right - segment.left);
-            this.segment_rect.setAttribute("height", segment.bottom - segment.top);
-
-            this.focus_rect.setAttribute("x", focus.left);
-            this.focus_rect.setAttribute("y", focus.top);
-            this.focus_rect.setAttribute("width", focus.right - focus.left);
-            this.focus_rect.setAttribute("height", focus.bottom - focus.top);
-        }
-
-        for (let x = 0; x < this.w; x++) {
-            for (let y = 0; y < this.h; y++) {
-                const rect = this.rects[x][y];
-                const x1 = (this.bbox.width / this.w) * x + (this.space / 2);
-                const y1 = (this.bbox.height / this.h) * y + (this.space / 2);
-                const x2 = x1 + (this.bbox.width / this.w) - this.space;
-                const y2 = y1 + (this.bbox.height / this.h) - this.space;
-
-                rect.p1 = this.warp([x1, y1], rect.p1, true);
-                rect.p2 = this.warp([x2, y1], rect.p2, true);
-                rect.p3 = this.warp([x2, y2], rect.p3, true);
-                rect.p4 = this.warp([x1, y2], rect.p4, true);
-
-                rect.setAttribute("points", `${rect.p1[0]},${rect.p1[1]} ` +
-                                            `${rect.p2[0]},${rect.p2[1]} ` +
-                                            `${rect.p3[0]},${rect.p3[1]} ` +
-                                            `${rect.p4[0]},${rect.p4[1]}`);
-            }
-        }
-
-        if (this.converge > 0) {
-            this.converge--;
-            window.requestAnimationFrame(this.layout.bind(this));
-        }
-    }
-
-    warp(startP, oldP, normalise, debug) {
-        const mx = this.mouseX;
-        const my = this.mouseY;
-
-        if (mx < 0 || my < 0) return startP;
-        if (mx == startP[0] && my == startP[1]) return startP;
-
-        let x = startP[0];
-        let y = startP[1];
-
-        // if we're within the segment, simply zoom.
-        if (x > this.segment.left && x < this.segment.right &&
-            y > this.segment.top && y < this.segment.bottom)
-        {
-            x = this.scale(x, this.segment.left, this.segment.right, this.focus.left, this.focus.right);
-            y = this.scale(y, this.segment.top, this.segment.bottom, this.focus.top, this.focus.bottom);
-        }
-        else {
-            // we displace the coordinates radially by a vertically flipped
-            // normal distribution: r += 1 - e ^ (-r^2)
-
-            // displace a maximum of ${displacement} pixels around the mouse.
-            const displacement = 0;
-            if (displacement > 0) {
-                const r = Math.sqrt((x - mx)**2  + (y - my)**2);
-                const r2 = displacement * (1 - Math.E ** (-(r ** 2)));
-
-                x += (x - mx) * (r2 / r);
-                y += (y - my) * (r2 / r);
+                opacity: 50%;
             }
 
-            // re-normalise to fit inside the bbox and outside the inner segment
-            if (normalise) {
-                // new algorithm:
-                // emit a ray from the mouse pointer through the point being considered.
-                // look at where it intersects the inner & outer bbox
-                // warp those points
-                // take our point and rescale it from being between those points, to being
-                // within their unwarped locations.
+            #segment_rect {
+                stroke: #f00;
+                fill: none;
+                opacity: 50%;
+            }
 
-                // console.log("intersect segment");
-                const ip = this.intersect([mx, my], [x, y], this.segment);
-                // console.log("intersect bbox");
-                const op = this.intersect([mx, my], [x, y], this.bbox);
-                // console.log("intersect focus");
-                // const fip = this.intersect([mx, my], [x, y], this.focus);
-                const fip = [
-                    this.scale(ip[0], this.segment.left, this.segment.right, this.focus.left, this.focus.right),
-                    this.scale(ip[1], this.segment.top, this.segment.bottom, this.focus.top, this.focus.bottom),
-                ]
-                const wip = this.warp(ip, undefined, false);
-                const wop = this.warp(op, undefined, false);
+            #focus_rect {
+                stroke: #0f0;
+                fill: none;
+                opacity: 50%;
+            }
 
-                // console.log(startP);
-                if (debug) {
-                    this.start_point.setAttribute("cx", startP[0]);
-                    this.start_point.setAttribute("cy", startP[1]);
-                    this.point.setAttribute("cx", x);
-                    this.point.setAttribute("cy", y);
-                    this.ip_point.setAttribute("cx", ip[0]);
-                    this.ip_point.setAttribute("cy", ip[1]);
-                    this.op_point.setAttribute("cx", op[0]);
-                    this.op_point.setAttribute("cy", op[1]);
-                    this.fip_point.setAttribute("cx", fip[0]);
-                    this.fip_point.setAttribute("cy", fip[1]);
-                    this.wip_point.setAttribute("cx", wip[0]);
-                    this.wip_point.setAttribute("cy", wip[1]);
-                    this.wop_point.setAttribute("cx", wop[0]);
-                    this.wop_point.setAttribute("cy", wop[1]);
-                    this.ray.setAttribute("x1", mx);
-                    this.ray.setAttribute("y1", my);
-                    this.ray.setAttribute("x2", op[0]);
-                    this.ray.setAttribute("y2", op[1]);
+            #bbox_rect {
+                stroke: #00f;
+                fill: none;
+            }
+
+            #point {
+                fill: #f00;
+            }
+
+            circle {
+                stroke: none;
+            }
+        </style>
+
+        <script type="text/javascript">
+            class Grid {
+                w = 9;
+                h = 9;
+                space = 1;
+                rects = [];
+                svg;
+                MAX_CONVERGE = 100;
+                converge = this.MAX_CONVERGE;
+
+                bbox;
+                segment;
+                focus;
+                mouseX = -1;
+                mouseY = -1;
+
+                segment_rect;
+                focus_rect;
+                bbox_rect;
+                start_point;
+                point;
+                ip_point;
+                op_point;
+                fip_point;
+                wip_point;
+                wop_point;
+                ray;
+
+                init() {
+                    this.svg = document.getElementById("grid");
+                    for (let x = 0; x < this.w; x++) {
+                        this.rects[x] = [];
+                        for (let y = 0; y < this.h; y++) {
+                            const rect = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                            rect.setAttribute("class", "rect");
+                            this.svg.appendChild(rect);
+                            this.rects[x][y] = rect;
+                        }
+                    }
+
+                    this.segment_rect = document.getElementById("segment_rect");
+                    this.focus_rect = document.getElementById("focus_rect");
+                    this.bbox_rect = document.getElementById("bbox_rect");
+                    this.start_point = document.getElementById("start_point");
+                    this.point = document.getElementById("point");
+                    this.ip_point = document.getElementById("ip_point");
+                    this.op_point = document.getElementById("op_point");
+                    this.fip_point = document.getElementById("fip_point");
+                    this.wip_point = document.getElementById("wip_point");
+                    this.wop_point = document.getElementById("wop_point");
+                    this.ray = document.getElementById("ray");
+
+                    window.requestAnimationFrame(this.layout.bind(this));
                 }
 
-                //console.log(ip,op,fip,wip,wop);
-                x = this.scale(x, wop[0], wip[0], op[0], fip[0]);
-                y = this.scale(y, wop[1], wip[1], op[1], fip[1]);
+                mousemove(e) {
+                    // make the cursor relative to the top left of the bbox
+                    this.mouseX = e.clientX - 10;
+                    this.mouseY = e.clientY - 10;
+
+                    if (this.mouseY < this.bbox.height / this.h) this.mouseY = 0;
+                    if (this.mouseY > ((this.h - 1) * this.bbox.height) / this.h) this.mouseY = this.bbox.height - 1;
+                    if (this.mouseX < this.bbox.width / this.w) this.mouseX = 0;
+                    if (this.mouseX > ((this.w - 1) * this.bbox.width) / this.w) this.mouseX = this.bbox.width - 1;
+
+                    //console.log(this.mouseX, this.mouseY, this.converge);
+                    if (this.converge > 0) {
+                        this.converge = this.MAX_CONVERGE;
+                    } else {
+                        this.converge = this.MAX_CONVERGE;
+                        this.layout();
+                    }
+                }
+
+                layout() {
+                    const debug = false;
+
+                    const bbox = this.svg.getBoundingClientRect();
+                    this.bbox = {
+                        right: bbox.right - bbox.left,
+                        bottom: bbox.bottom - bbox.top,
+                        left: 0,
+                        top: 0,
+                        width: bbox.right - bbox.left,
+                        height: bbox.bottom - bbox.top,
+                    };
+
+                    if (debug) {
+                        this.bbox_rect.setAttribute("x", this.bbox.left);
+                        this.bbox_rect.setAttribute("y", this.bbox.top);
+                        this.bbox_rect.setAttribute("width", this.bbox.width);
+                        this.bbox_rect.setAttribute("height", this.bbox.height);
+                    }
+
+                    const zoom = 2;
+                    const segWidth = this.bbox.width / this.w;
+                    const segHeight = this.bbox.height / this.h;
+
+                    // the segment has the coordinates of the undistorted grid segment we're hovering over
+                    const segment = {
+                        left: segWidth * ((this.mouseX / segWidth) | 0),
+                        right: segWidth * ((1 + this.mouseX / segWidth) | 0),
+                        top: segHeight * ((this.mouseY / segHeight) | 0),
+                        bottom: segHeight * ((1 + this.mouseY / segHeight) | 0),
+                    };
+                    this.segment = segment;
+
+                    // the focus is the zoomed segment that we're focusing on
+                    const focus = {
+                        left: segment.left - (segWidth * (zoom - 1)) / 2,
+                        right: segment.right + (segWidth * (zoom - 1)) / 2,
+                        top: segment.top - (segHeight * (zoom - 1)) / 2,
+                        bottom: segment.bottom + (segHeight * (zoom - 1)) / 2,
+                    };
+                    if (focus.left < this.bbox.left) {
+                        const shift = this.bbox.left - focus.left - (this.space * zoom) / 3;
+                        focus.left += shift;
+                        focus.right += shift;
+                    }
+                    if (focus.top < this.bbox.top) {
+                        const shift = this.bbox.top - focus.top - (this.space * zoom) / 3;
+                        focus.top += shift;
+                        focus.bottom += shift;
+                    }
+                    if (focus.right > this.bbox.right) {
+                        const shift = this.bbox.right - focus.right + (this.space * zoom) / 3;
+                        focus.left += shift;
+                        focus.right += shift;
+                    }
+                    if (focus.bottom > this.bbox.bottom - this.bbox.top) {
+                        const shift = this.bbox.bottom - focus.bottom + (this.space * zoom) / 3;
+                        focus.top += shift;
+                        focus.bottom += shift;
+                    }
+                    this.focus = focus;
+
+                    if (debug) {
+                        this.segment_rect.setAttribute("x", segment.left);
+                        this.segment_rect.setAttribute("y", segment.top);
+                        this.segment_rect.setAttribute("width", segment.right - segment.left);
+                        this.segment_rect.setAttribute("height", segment.bottom - segment.top);
+
+                        this.focus_rect.setAttribute("x", focus.left);
+                        this.focus_rect.setAttribute("y", focus.top);
+                        this.focus_rect.setAttribute("width", focus.right - focus.left);
+                        this.focus_rect.setAttribute("height", focus.bottom - focus.top);
+                    }
+
+                    for (let x = 0; x < this.w; x++) {
+                        for (let y = 0; y < this.h; y++) {
+                            const rect = this.rects[x][y];
+                            const x1 = (this.bbox.width / this.w) * x + this.space / 2;
+                            const y1 = (this.bbox.height / this.h) * y + this.space / 2;
+                            const x2 = x1 + this.bbox.width / this.w - this.space;
+                            const y2 = y1 + this.bbox.height / this.h - this.space;
+
+                            rect.p1 = this.warp([x1, y1], rect.p1, true);
+                            rect.p2 = this.warp([x2, y1], rect.p2, true);
+                            rect.p3 = this.warp([x2, y2], rect.p3, true);
+                            rect.p4 = this.warp([x1, y2], rect.p4, true);
+
+                            rect.setAttribute(
+                                "points",
+                                `${rect.p1[0]},${rect.p1[1]} ` +
+                                    `${rect.p2[0]},${rect.p2[1]} ` +
+                                    `${rect.p3[0]},${rect.p3[1]} ` +
+                                    `${rect.p4[0]},${rect.p4[1]}`,
+                            );
+                        }
+                    }
+
+                    if (this.converge > 0) {
+                        this.converge--;
+                        window.requestAnimationFrame(this.layout.bind(this));
+                    }
+                }
+
+                warp(startP, oldP, normalise, debug) {
+                    const mx = this.mouseX;
+                    const my = this.mouseY;
+
+                    if (mx < 0 || my < 0) return startP;
+                    if (mx == startP[0] && my == startP[1]) return startP;
+
+                    let x = startP[0];
+                    let y = startP[1];
+
+                    // if we're within the segment, simply zoom.
+                    if (
+                        x > this.segment.left &&
+                        x < this.segment.right &&
+                        y > this.segment.top &&
+                        y < this.segment.bottom
+                    ) {
+                        x = this.scale(x, this.segment.left, this.segment.right, this.focus.left, this.focus.right);
+                        y = this.scale(y, this.segment.top, this.segment.bottom, this.focus.top, this.focus.bottom);
+                    } else {
+                        // we displace the coordinates radially by a vertically flipped
+                        // normal distribution: r += 1 - e ^ (-r^2)
+
+                        // displace a maximum of ${displacement} pixels around the mouse.
+                        const displacement = 0;
+                        if (displacement > 0) {
+                            const r = Math.sqrt((x - mx) ** 2 + (y - my) ** 2);
+                            const r2 = displacement * (1 - Math.E ** -(r ** 2));
+
+                            x += (x - mx) * (r2 / r);
+                            y += (y - my) * (r2 / r);
+                        }
+
+                        // re-normalise to fit inside the bbox and outside the inner segment
+                        if (normalise) {
+                            // new algorithm:
+                            // emit a ray from the mouse pointer through the point being considered.
+                            // look at where it intersects the inner & outer bbox
+                            // warp those points
+                            // take our point and rescale it from being between those points, to being
+                            // within their unwarped locations.
+
+                            // console.log("intersect segment");
+                            const ip = this.intersect([mx, my], [x, y], this.segment);
+                            // console.log("intersect bbox");
+                            const op = this.intersect([mx, my], [x, y], this.bbox);
+                            // console.log("intersect focus");
+                            // const fip = this.intersect([mx, my], [x, y], this.focus);
+                            const fip = [
+                                this.scale(
+                                    ip[0],
+                                    this.segment.left,
+                                    this.segment.right,
+                                    this.focus.left,
+                                    this.focus.right,
+                                ),
+                                this.scale(
+                                    ip[1],
+                                    this.segment.top,
+                                    this.segment.bottom,
+                                    this.focus.top,
+                                    this.focus.bottom,
+                                ),
+                            ];
+                            const wip = this.warp(ip, undefined, false);
+                            const wop = this.warp(op, undefined, false);
+
+                            // console.log(startP);
+                            if (debug) {
+                                this.start_point.setAttribute("cx", startP[0]);
+                                this.start_point.setAttribute("cy", startP[1]);
+                                this.point.setAttribute("cx", x);
+                                this.point.setAttribute("cy", y);
+                                this.ip_point.setAttribute("cx", ip[0]);
+                                this.ip_point.setAttribute("cy", ip[1]);
+                                this.op_point.setAttribute("cx", op[0]);
+                                this.op_point.setAttribute("cy", op[1]);
+                                this.fip_point.setAttribute("cx", fip[0]);
+                                this.fip_point.setAttribute("cy", fip[1]);
+                                this.wip_point.setAttribute("cx", wip[0]);
+                                this.wip_point.setAttribute("cy", wip[1]);
+                                this.wop_point.setAttribute("cx", wop[0]);
+                                this.wop_point.setAttribute("cy", wop[1]);
+                                this.ray.setAttribute("x1", mx);
+                                this.ray.setAttribute("y1", my);
+                                this.ray.setAttribute("x2", op[0]);
+                                this.ray.setAttribute("y2", op[1]);
+                            }
+
+                            //console.log(ip,op,fip,wip,wop);
+                            x = this.scale(x, wop[0], wip[0], op[0], fip[0]);
+                            y = this.scale(y, wop[1], wip[1], op[1], fip[1]);
+                        }
+                    }
+
+                    // tween from the oldP to our newP
+                    if (oldP === undefined) {
+                        return [x, y];
+                    } else {
+                        const k = 0.05;
+                        return [(1 - k) * oldP[0] + k * x, (1 - k) * oldP[1] + k * y];
+                    }
+                }
+
+                intersect(p1, p2, box) {
+                    // for a ray emitted from p1 which goes through p2, where
+                    // does it intersect the given box?
+
+                    if (p1[0] < box.left || p1[0] > box.right || p1[1] < box.top || p1[1] > box.bottom) {
+                        console.error("center point is outside of box");
+                    }
+
+                    //console.log(p1, p2, box);
+
+                    let x, y;
+
+                    x = this.scale(box.top, p1[1], p2[1], p1[0], p2[0]);
+                    if (x >= box.left && x <= box.right && p2[1] <= p1[1]) return [x, box.top];
+
+                    x = this.scale(box.bottom, p1[1], p2[1], p1[0], p2[0]);
+                    if (x >= box.left && x <= box.right && p2[1] > p1[1]) return [x, box.bottom];
+
+                    y = this.scale(box.left, p1[0], p2[0], p1[1], p2[1]);
+                    if (y >= box.top && y <= box.bottom && p2[0] <= p1[0]) return [box.left, y];
+
+                    y = this.scale(box.right, p1[0], p2[0], p1[1], p2[1]);
+                    if (y >= box.top && y <= box.bottom && p2[0] > p1[0]) return [box.right, y];
+
+                    console.error("failed to intersect line with box - this should never happen");
+                    return p1;
+                }
+
+                // re-scale a from range (a0, a1) to be within (b0, b1)
+                scale(a, a0, a1, b0, b1) {
+                    if (a1 == a0) return b0;
+                    const t = (a - a0) / (a1 - a0);
+                    const res = b0 + (b1 - b0) * t;
+                    //console.log(a, a0, a1, b0, b1, res);
+                    return res;
+                }
             }
-        }
 
-        // tween from the oldP to our newP
-        if (oldP === undefined) {
-            return [x, y];
-        }
-        else {
-            const k = 0.05;
-            return [(1-k)*oldP[0] + k*x, (1-k)*oldP[1] + k*y];
-        }
-    }
+            const grid = new Grid();
 
-    intersect(p1, p2, box) {
-        // for a ray emitted from p1 which goes through p2, where
-        // does it intersect the given box?
+            function onLoad() {
+                grid.init();
+                grid.layout();
+            }
 
-        if (p1[0] < box.left || p1[0] > box.right || p1[1] < box.top || p1[1] > box.bottom) {
-            console.error("center point is outside of box");
-        }
+            function onResize() {
+                grid.layout();
+            }
 
-        //console.log(p1, p2, box);
+            function onMouseMove(e) {
+                grid.mousemove(e);
+            }
+        </script>
+    </head>
 
-        let x, y;
-
-        x = this.scale(box.top, p1[1], p2[1], p1[0], p2[0]);
-        if (x >= box.left && x <= box.right && p2[1] <= p1[1]) return [x, box.top];
-
-        x = this.scale(box.bottom, p1[1], p2[1], p1[0], p2[0]);
-        if (x >= box.left && x <= box.right && p2[1] > p1[1]) return [x, box.bottom];
-
-        y = this.scale(box.left, p1[0], p2[0], p1[1], p2[1]);
-        if (y >= box.top && y <= box.bottom && p2[0] <= p1[0]) return [box.left, y];
-
-        y = this.scale(box.right, p1[0], p2[0], p1[1], p2[1]);
-        if (y >= box.top && y <= box.bottom && p2[0] > p1[0]) return [box.right, y];
-
-        console.error("failed to intersect line with box - this should never happen");
-        return p1;
-    }
-
-    // re-scale a from range (a0, a1) to be within (b0, b1)
-    scale(a, a0, a1, b0, b1) {
-        if (a1 == a0) return b0;
-        const t = (a - a0) / (a1 - a0);
-        const res = b0 + (b1 - b0) * t;
-        //console.log(a, a0, a1, b0, b1, res);
-        return res;
-    }
-}
-
-const grid = new Grid();
-
-function onLoad() {
-    grid.init();
-    grid.layout();
-}
-
-function onResize() {
-    grid.layout();
-}
-
-function onMouseMove(e) {
-    grid.mousemove(e);
-}
-
-</script>
-</head>
-
-<body onload="onLoad()" onresize="onResize()" onmousemove="onMouseMove(event)">
-    <svg id="grid" xmlns="http://www.w3.org/2000/svg">
-        <!-- debugging -->
-        <rect id="segment_rect"/>
-        <rect id="focus_rect"/>
-        <rect id="bbox_rect"/>
-        <circle id="start_point" r="5" fill="#fff"/>
-        <circle id="point" r="3" fill="#f00"/>
-        <circle id="ip_point" r="5" fill="#0f0"/>
-        <circle id="fip_point" r="3" fill="#ff0"/>
-        <circle id="wip_point" r="3" fill="#088"/>
-        <circle id="wop_point" r="5" fill="#f0f"/>
-        <circle id="op_point" r="3" fill="#00f"/>
-        <line id="ray" stroke="#fff"/>
-    </svg>
-</body>
-
+    <body onload="onLoad()" onresize="onResize()" onmousemove="onMouseMove(event)">
+        <svg id="grid" xmlns="http://www.w3.org/2000/svg">
+            <!-- debugging -->
+            <rect id="segment_rect" />
+            <rect id="focus_rect" />
+            <rect id="bbox_rect" />
+            <circle id="start_point" r="5" fill="#fff" />
+            <circle id="point" r="3" fill="#f00" />
+            <circle id="ip_point" r="5" fill="#0f0" />
+            <circle id="fip_point" r="3" fill="#ff0" />
+            <circle id="wip_point" r="3" fill="#088" />
+            <circle id="wop_point" r="5" fill="#f0f" />
+            <circle id="op_point" r="3" fill="#00f" />
+            <line id="ray" stroke="#fff" />
+        </svg>
+    </body>
 </html>
