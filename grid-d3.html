@@ -1,39 +1,170 @@
 <html>
-<head>
+    <head>
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+        <style type="text/css">
+            body {
+                background: #444;
+                margin: 10px;
+            }
 
-<script src="https://d3js.org/d3.v7.min.js"></script>
-<style type="text/css">
-body {
-    background: #444;
-    margin: 10px;
-}
+            #grid {
+                width: 100%;
+                height: 100%;
+                position: relative;
+            }
 
-#grid {
-    width: 100%;
-    height: 100%;
-    position: relative;
-}
+            .rect {
+                fill: #000;
+                /*
+                    stroke: #000;
+                    stroke-width: 20;
+                    stroke-linejoin: round;
+                */
+                opacity: 50%;
+            }
+        </style>
 
-.rect {
-    fill: #000;
-    /*
-    stroke: #000;
-    stroke-width: 20;
-    stroke-linejoin: round;
-    */
-    opacity: 50%;
-}
-</style>
+        <script type="text/javascript">
 
-<script type="text/javascript">
+        class Grid {
+            mx = -1;
+            my = -1;
 
+            simulation;
 
-</script>
-</head>
+            init() {
+                // width and height in terms of tiles
+                const WIDTH = 9;
+                const HEIGHT = 9;
 
-<body onload="onLoad()" onresize="onResize()" onmousemove="onMouseMove(event)">
-    <svg id="grid" xmlns="http://www.w3.org/2000/svg">
-    </svg>
-</body>
+                const color = () => {
+                    const scale = d3.scaleOrdinal(d3.schemeCategory10);
+                    return d => scale(d.group);
+                };
 
+                const nodes = [...Array((WIDTH + 1) * (HEIGHT + 1)).keys()].map(i => ({ id: i }));
+                const links = [];
+                for (let y = 0; y <= HEIGHT; y++) {
+                    for (let x = 0; x <= WIDTH; x++) {
+                        if (x < WIDTH) {
+                            links.push({ source: x + y * (WIDTH + 1), target: x + 1 + y * (WIDTH + 1) });
+                        }
+                        if (y < HEIGHT) {
+                            links.push({ source: x + y * (WIDTH + 1), target: x + ((y + 1) * (WIDTH + 1)) });
+                        }
+                    }
+                }
+
+                // console.log(nodes);
+                // console.log(links);
+
+                const svg = d3.select("svg");
+                const bbox = svg.node().getBoundingClientRect();
+
+                this.simulation = d3
+                    .forceSimulation(nodes)
+                    .force(
+                        "link",
+                        d3.forceLink(links).id((d) => d.id)
+                            //.strength(()=>.2),
+                    )
+                    //.force("charge", d3.forceManyBody().strength(()=>0))
+                    .force("center", d3.forceCenter(bbox.width / 2, bbox.height / 2));
+
+                const link = svg
+                    .append("g")
+                    .attr("stroke", "#999")
+                    .attr("stroke-opacity", 0.6)
+                    .selectAll("line")
+                    .data(links)
+                    .join("line")
+                    .attr("stroke-width", (d) => Math.sqrt(d.value));
+
+                // const node = svg
+                //     .append("g")
+                //     .attr("stroke", "#fff")
+                //     .attr("stroke-width", 1)
+                //     .selectAll("circle")
+                //     .data(nodes)
+                //     .join("circle")
+                //     .attr("r", 5)
+                //     .attr("fill", color);
+
+                // node.append("title").text((d) => d.id);
+
+                this.simulation.on("tick", () => {
+
+                    // constrain the outside
+
+                    for (let x = 0; x <= WIDTH; x++) {
+                        nodes[x].x = x * bbox.width / WIDTH;
+                        nodes[x].y = 0;
+                        nodes[x + (WIDTH + 1) * HEIGHT].x = x * bbox.width / WIDTH;
+                        nodes[x + (WIDTH + 1) * HEIGHT].y = bbox.height;
+                        //console.log("x: ", x, x + (WIDTH + 1) * HEIGHT);
+                    }
+                    for (let y = 0; y <= HEIGHT; y++) {
+                        nodes[(WIDTH + 1) * y].x = 0;
+                        nodes[(WIDTH + 1) * y].y = y * bbox.height / HEIGHT;
+                        nodes[(WIDTH + 1) * (y + 1) - 1].x = bbox.width;
+                        nodes[(WIDTH + 1) * (y + 1) - 1].y = y * bbox.height / HEIGHT;
+                        //console.log("y: ", (WIDTH + 1) * y, (WIDTH + 1) * (y + 1) - 1);
+                    }
+
+                    // constrain the inside
+                    if (this.mx >= 0 && this.my >= 0) {
+                        let zoom = 2.0;
+                        const segmentX = WIDTH * (this.mx / bbox.width) | 0;
+                        const segmentY = HEIGHT * (this.my / bbox.height) | 0;
+                        zoom -= 1.5;
+                        const k = 1;
+                        nodes[segmentX + segmentY * (WIDTH + 1)].x =
+                            nodes[segmentX + segmentY * (WIDTH + 1)].x * (1-k) + (segmentX * (bbox.width / WIDTH) - zoom * (bbox.width / WIDTH)) * (k);
+                        nodes[segmentX + segmentY * (WIDTH + 1)].y =
+                            nodes[segmentX + segmentY * (WIDTH + 1)].y * (1-k) + (segmentY * (bbox.height / HEIGHT) - zoom * (bbox.height / HEIGHT)) * (k);
+                        nodes[(segmentX + 1) + segmentY * (WIDTH + 1)].x =
+                            nodes[(segmentX + 1) + segmentY * (WIDTH + 1)].x * (1-k) + ((segmentX + 1) * (bbox.width / WIDTH) + zoom * (bbox.width / WIDTH)) * (k);
+                        nodes[(segmentX + 1) + segmentY * (WIDTH + 1)].y =
+                            nodes[(segmentX + 1) + segmentY * (WIDTH + 1)].y * (1-k) + (segmentY * (bbox.height / HEIGHT) - zoom * (bbox.height / HEIGHT)) * (k);
+                        nodes[(segmentX + 1) + (segmentY + 1) * (WIDTH + 1)].x =
+                            nodes[(segmentX + 1) + (segmentY + 1) * (WIDTH + 1)].x * (1-k) + ((segmentX + 1) * (bbox.width / WIDTH) + zoom * (bbox.width / WIDTH)) * (k);
+                        nodes[(segmentX + 1) + (segmentY + 1) * (WIDTH + 1)].y =
+                            nodes[(segmentX + 1) + (segmentY + 1) * (WIDTH + 1)].y * (1-k) + ((segmentY + 1) * (bbox.height / HEIGHT) + zoom * (bbox.height / HEIGHT)) * (k);
+                        nodes[segmentX + (segmentY + 1) * (WIDTH + 1)].x =
+                            nodes[segmentX + (segmentY + 1) * (WIDTH + 1)].x * (1-k) + (segmentX * (bbox.width / WIDTH) - zoom * (bbox.width / WIDTH)) * (k);
+                        nodes[segmentX + (segmentY + 1) * (WIDTH + 1)].y =
+                            nodes[segmentX + (segmentY + 1) * (WIDTH + 1)].y * (1-k) + ((segmentY + 1) * (bbox.height / HEIGHT) + zoom * (bbox.height / HEIGHT)) * (k);
+                    }
+
+                    link.attr("x1", (d) => d.source.x)
+                        .attr("y1", (d) => d.source.y)
+                        .attr("x2", (d) => d.target.x)
+                        .attr("y2", (d) => d.target.y);
+
+                    // node.attr("cx", (d) => d.x).attr("cy", (d) => d.y);
+                });
+            }
+
+            mousemove(e) {
+                this.mx = e.clientX - 10;
+                this.my = e.clientY - 10;
+                this.simulation.alpha(1);
+                //this.simulation.force("center", d3.forceCenter(this.mx, this/my));
+            }
+        }
+
+        const grid = new Grid();
+
+        function onLoad() {
+            grid.init();
+        }
+        function onMouseMove(e) {
+            grid.mousemove(e);
+        }
+        </script>
+    </head>
+
+    <body onload="onLoad()" onmousemove="onMouseMove(event)">
+        <svg id="grid" xmlns="http://www.w3.org/2000/svg"></svg>
+    </body>
 </html>
