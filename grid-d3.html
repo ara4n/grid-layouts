@@ -30,6 +30,11 @@
             mx = -1;
             my = -1;
 
+            sx1; sy1;
+            sx2; sy2;
+            sx3; sy3;
+            sx4; sy4;
+
             simulation;
 
             init() {
@@ -117,23 +122,44 @@
                         const segmentX = WIDTH * (this.mx / bbox.width) | 0;
                         const segmentY = HEIGHT * (this.my / bbox.height) | 0;
                         zoom -= 1.5;
-                        const k = 1;
+                        const k = .2;
+
+                        if (this.sx1 === undefined) {
+                            this.sx1 = nodes[segmentX + segmentY * (WIDTH + 1)].x;
+                            this.sy1 = nodes[segmentX + segmentY * (WIDTH + 1)].y;
+                            this.sx2 = nodes[(segmentX + 1) + segmentY * (WIDTH + 1)].x;
+                            this.sy2 = nodes[(segmentX + 1) + segmentY * (WIDTH + 1)].y;
+                            this.sx3 = nodes[(segmentX + 1) + (segmentY + 1) * (WIDTH + 1)].x;
+                            this.sy3 = nodes[(segmentX + 1) + (segmentY + 1) * (WIDTH + 1)].y;
+                            this.sx4 = nodes[segmentX + (segmentY + 1) * (WIDTH + 1)].x;
+                            this.sy4 = nodes[segmentX + (segmentY + 1) * (WIDTH + 1)].y;
+                        }
+
                         nodes[segmentX + segmentY * (WIDTH + 1)].x =
-                            nodes[segmentX + segmentY * (WIDTH + 1)].x * (1-k) + (segmentX * (bbox.width / WIDTH) - zoom * (bbox.width / WIDTH)) * (k);
+                            this.sx1 * (1-k) + (segmentX * (bbox.width / WIDTH) - zoom * (bbox.width / WIDTH)) * (k);
                         nodes[segmentX + segmentY * (WIDTH + 1)].y =
-                            nodes[segmentX + segmentY * (WIDTH + 1)].y * (1-k) + (segmentY * (bbox.height / HEIGHT) - zoom * (bbox.height / HEIGHT)) * (k);
+                            this.sy1 * (1-k) + (segmentY * (bbox.height / HEIGHT) - zoom * (bbox.height / HEIGHT)) * (k);
                         nodes[(segmentX + 1) + segmentY * (WIDTH + 1)].x =
-                            nodes[(segmentX + 1) + segmentY * (WIDTH + 1)].x * (1-k) + ((segmentX + 1) * (bbox.width / WIDTH) + zoom * (bbox.width / WIDTH)) * (k);
+                            this.sx2 * (1-k) + ((segmentX + 1) * (bbox.width / WIDTH) + zoom * (bbox.width / WIDTH)) * (k);
                         nodes[(segmentX + 1) + segmentY * (WIDTH + 1)].y =
-                            nodes[(segmentX + 1) + segmentY * (WIDTH + 1)].y * (1-k) + (segmentY * (bbox.height / HEIGHT) - zoom * (bbox.height / HEIGHT)) * (k);
+                            this.sy2 * (1-k) + (segmentY * (bbox.height / HEIGHT) - zoom * (bbox.height / HEIGHT)) * (k);
                         nodes[(segmentX + 1) + (segmentY + 1) * (WIDTH + 1)].x =
-                            nodes[(segmentX + 1) + (segmentY + 1) * (WIDTH + 1)].x * (1-k) + ((segmentX + 1) * (bbox.width / WIDTH) + zoom * (bbox.width / WIDTH)) * (k);
+                            this.sx3 * (1-k) + ((segmentX + 1) * (bbox.width / WIDTH) + zoom * (bbox.width / WIDTH)) * (k);
                         nodes[(segmentX + 1) + (segmentY + 1) * (WIDTH + 1)].y =
-                            nodes[(segmentX + 1) + (segmentY + 1) * (WIDTH + 1)].y * (1-k) + ((segmentY + 1) * (bbox.height / HEIGHT) + zoom * (bbox.height / HEIGHT)) * (k);
+                            this.sy3 * (1-k) + ((segmentY + 1) * (bbox.height / HEIGHT) + zoom * (bbox.height / HEIGHT)) * (k);
                         nodes[segmentX + (segmentY + 1) * (WIDTH + 1)].x =
-                            nodes[segmentX + (segmentY + 1) * (WIDTH + 1)].x * (1-k) + (segmentX * (bbox.width / WIDTH) - zoom * (bbox.width / WIDTH)) * (k);
+                            this.sx4 * (1-k) + (segmentX * (bbox.width / WIDTH) - zoom * (bbox.width / WIDTH)) * (k);
                         nodes[segmentX + (segmentY + 1) * (WIDTH + 1)].y =
-                            nodes[segmentX + (segmentY + 1) * (WIDTH + 1)].y * (1-k) + ((segmentY + 1) * (bbox.height / HEIGHT) + zoom * (bbox.height / HEIGHT)) * (k);
+                            this.sy4 * (1-k) + ((segmentY + 1) * (bbox.height / HEIGHT) + zoom * (bbox.height / HEIGHT)) * (k);
+
+                        this.sx1 = nodes[segmentX + segmentY * (WIDTH + 1)].x;
+                        this.sy1 = nodes[segmentX + segmentY * (WIDTH + 1)].y;
+                        this.sx2 = nodes[(segmentX + 1) + segmentY * (WIDTH + 1)].x;
+                        this.sy2 = nodes[(segmentX + 1) + segmentY * (WIDTH + 1)].y;
+                        this.sx3 = nodes[(segmentX + 1) + (segmentY + 1) * (WIDTH + 1)].x;
+                        this.sy3 = nodes[(segmentX + 1) + (segmentY + 1) * (WIDTH + 1)].y;
+                        this.sx4 = nodes[segmentX + (segmentY + 1) * (WIDTH + 1)].x;
+                        this.sy4 = nodes[segmentX + (segmentY + 1) * (WIDTH + 1)].y;
                     }
 
                     link.attr("x1", (d) => d.source.x)
@@ -149,6 +175,7 @@
                 this.mx = e.clientX - 10;
                 this.my = e.clientY - 10;
                 this.simulation.alpha(1);
+                this.simulation.restart();
                 //this.simulation.force("center", d3.forceCenter(this.mx, this/my));
             }
         }
