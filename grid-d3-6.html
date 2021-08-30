@@ -1,0 +1,268 @@
+<html>
+    <head>
+        <script src="https://d3js.org/d3.v7.min.js"></script>
+        <style type="text/css">
+            body {
+                background: #444;
+                margin: 10px;
+            }
+
+            #grid {
+                width: 100%;
+                height: 100%;
+                position: relative;
+            }
+
+            video {
+                position: absolute;
+                object-fit: cover;
+            }
+
+            polygon {
+                stroke: #fff;
+                fill: none;
+            }
+        </style>
+
+        <script type="text/javascript">
+
+        class Grid {
+            mx = -1;
+            my = -1;
+
+            // width and height in terms of tiles
+            WIDTH = 9;
+            HEIGHT = 9;
+
+            bbox;
+
+            segs = [];
+
+            simulation;
+
+            init() {
+
+                const color = () => {
+                    const scale = d3.scaleOrdinal(d3.schemeCategory10);
+                    return d => scale(d.group);
+                };
+
+                const nodes = [...Array((this.WIDTH + 1) * (this.HEIGHT + 1)).keys()].map(i => ({ id: i }));
+                const links = [];
+                const rects = [];
+                for (let y = 0; y <= this.HEIGHT; y++) {
+                    for (let x = 0; x <= this.WIDTH; x++) {
+                        if (x < this.WIDTH) {
+                            links.push({ source: x + y * (this.WIDTH + 1), target: x + 1 + y * (this.WIDTH + 1) });
+                        }
+                        if (y < this.HEIGHT) {
+                            links.push({ source: x + y * (this.WIDTH + 1), target: x + ((y + 1) * (this.WIDTH + 1)) });
+                        }
+                        if (x < this.WIDTH && y < this.HEIGHT) {
+                            rects.push({
+                                id: x + y * this.WIDTH,
+                                v: [
+                                    nodes[x + y * (this.WIDTH + 1)],
+                                    nodes[(x + 1) + y * (this.WIDTH + 1)],
+                                    nodes[(x + 1) + (y + 1) * (this.WIDTH + 1)],
+                                    nodes[x + (y + 1) * (this.WIDTH + 1)],
+                                ]
+                            });
+                        }
+                    }
+                }
+
+                // console.log(nodes);
+                // console.log(links);
+                // console.log(rects);
+
+                const svg = d3.select("svg");
+                this.bbox = svg.node().getBoundingClientRect();
+
+                this.simulation = d3
+                    .forceSimulation(nodes)
+                    .force(
+                        "link",
+                        d3.forceLink(links).id((d) => d.id)
+                          //.strength(()=>0.01),
+                    )
+                    .force("charge", d3.forceManyBody().strength(()=>-1))
+                    .force("center", d3.forceCenter(this.bbox.width / 2, this.bbox.height / 2));
+
+                const outlines = svg
+                    .selectAll("polygon")
+                    .data(rects)
+                    .join("polygon")
+
+                const rect = svg
+                    .select("defs")
+                    .selectAll("clipPath")
+                    .data(rects)
+                    .join("clipPath")
+                    .attr("id", d => `clip${d.id}`)
+                    .insert("polygon")
+
+                const video = d3.select("body")
+                    .selectAll("video")
+                    .data(rects)
+                    .join("video")
+                    .style("clip-path", d => `url(#clip${d.id})`)
+
+                const constraints = {
+                    video: true,
+                };
+                navigator.mediaDevices
+                    .getUserMedia(constraints)
+                    .then(stream => {
+                        d3.select("body")
+                            .selectAll("video")
+                            .attr("autoplay", true)
+                            .property("srcObject", stream);
+                    })
+                    .catch(error => { console.error(error) });
+
+
+                // const node = svg
+                //     .append("g")
+                //     .attr("stroke", "#fff")
+                //     .attr("stroke-this.WIDTH", 1)
+                //     .selectAll("circle")
+                //     .data(nodes)
+                //     .join("circle")
+                //     .attr("r", 5)
+                //     .attr("fill", color);
+
+                // node.append("title").text((d) => d.id);
+
+                const offset = 5;
+
+                this.simulation.on("tick", () => {
+                    // constrain the outside
+                    for (let x = 0; x <= this.WIDTH; x++) {
+                        nodes[x].x = x * this.bbox.width / this.WIDTH;
+                        nodes[x].y = 0;
+                        nodes[x + (this.WIDTH + 1) * this.HEIGHT].x = x * this.bbox.width / this.WIDTH;
+                        nodes[x + (this.WIDTH + 1) * this.HEIGHT].y = this.bbox.height;
+                        //console.log("x: ", x, x + (this.WIDTH + 1) * this.HEIGHT);
+                    }
+                    for (let y = 0; y <= this.HEIGHT; y++) {
+                        nodes[(this.WIDTH + 1) * y].x = 0;
+                        nodes[(this.WIDTH + 1) * y].y = y * this.bbox.height / this.HEIGHT;
+                        nodes[(this.WIDTH + 1) * (y + 1) - 1].x = this.bbox.width;
+                        nodes[(this.WIDTH + 1) * (y + 1) - 1].y = y * this.bbox.height / this.HEIGHT;
+                        //console.log("y: ", (this.WIDTH + 1) * y, (this.WIDTH + 1) * (y + 1) - 1);
+                    }
+
+                    // constrain the inside
+                    if (this.mx >= 0 && this.my >= 0) {
+                        let zoom = 2.0;
+                        const segmentX = this.WIDTH * (this.mx / this.bbox.width) | 0;
+                        const segmentY = this.HEIGHT * (this.my / this.bbox.height) | 0;
+                        this.zoom(nodes, segmentX, segmentY, 0, zoom);
+                        this.zoom(nodes, this.WIDTH - 1 - segmentX, this.HEIGHT - 1 - segmentY, 1, zoom);
+                    }
+
+                    rect.attr("points", d => {
+                        const ox = Math.min(d.v[0].x, d.v[3].x);
+                        const oy = Math.min(d.v[0].y, d.v[1].y);
+                        const x1 = d.v[0].x + offset - ox;
+                        const y1 = d.v[0].y + offset - oy;
+                        const x2 = d.v[1].x - offset - ox;
+                        const y2 = d.v[1].y + offset - oy;
+                        const x3 = d.v[2].x - offset - ox;
+                        const y3 = d.v[2].y - offset - oy;
+                        const x4 = d.v[3].x + offset - ox;
+                        const y4 = d.v[3].y - offset - oy;
+                        return `${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}`
+                    });
+
+                    outlines.attr("points", d => {
+                        const x1 = d.v[0].x + offset;
+                        const y1 = d.v[0].y + offset;
+                        const x2 = d.v[1].x - offset;
+                        const y2 = d.v[1].y + offset;
+                        const x3 = d.v[2].x - offset;
+                        const y3 = d.v[2].y - offset;
+                        const x4 = d.v[3].x + offset;
+                        const y4 = d.v[3].y - offset;
+                        return `${x1},${y1} ${x2},${y2} ${x3},${y3} ${x4},${y4}`
+                    });
+
+                    video.style("left", d => Math.min(d.v[0].x, d.v[3].x) + 10)
+                         .style("top",  d => Math.min(d.v[0].y, d.v[1].y) + 10)
+                         .style("width", d => (Math.max(d.v[1].x, d.v[2].x) - Math.min(d.v[0].x, d.v[3].x)) - offset*2)
+                         .style("height", d => (Math.max(d.v[2].y, d.v[3].y) - Math.min(d.v[0].y, d.v[1].y)) - offset*2);
+                });
+            }
+
+            zoom(nodes, segmentX, segmentY, i, zoom) {
+                zoom -= 1.5;
+                const k = .15;
+
+                if (this.segs[i] === undefined) {
+                    this.segs[i] = {
+                        sx1: nodes[segmentX + segmentY * (this.WIDTH + 1)].x,
+                        sy1: nodes[segmentX + segmentY * (this.WIDTH + 1)].y,
+                        sx2: nodes[(segmentX + 1) + segmentY * (this.WIDTH + 1)].x,
+                        sy2: nodes[(segmentX + 1) + segmentY * (this.WIDTH + 1)].y,
+                        sx3: nodes[(segmentX + 1) + (segmentY + 1) * (this.WIDTH + 1)].x,
+                        sy3: nodes[(segmentX + 1) + (segmentY + 1) * (this.WIDTH + 1)].y,
+                        sx4: nodes[segmentX + (segmentY + 1) * (this.WIDTH + 1)].x,
+                        sy4: nodes[segmentX + (segmentY + 1) * (this.WIDTH + 1)].y,
+                    }
+                }
+
+                nodes[segmentX + segmentY * (this.WIDTH + 1)].x =
+                    this.segs[i].sx1 * (1-k) + (segmentX * (this.bbox.width / this.WIDTH) - zoom * (this.bbox.width / this.WIDTH)) * (k);
+                nodes[segmentX + segmentY * (this.WIDTH + 1)].y =
+                    this.segs[i].sy1 * (1-k) + (segmentY * (this.bbox.height / this.HEIGHT) - zoom * (this.bbox.height / this.HEIGHT)) * (k);
+                nodes[(segmentX + 1) + segmentY * (this.WIDTH + 1)].x =
+                    this.segs[i].sx2 * (1-k) + ((segmentX + 1) * (this.bbox.width / this.WIDTH) + zoom * (this.bbox.width / this.WIDTH)) * (k);
+                nodes[(segmentX + 1) + segmentY * (this.WIDTH + 1)].y =
+                    this.segs[i].sy2 * (1-k) + (segmentY * (this.bbox.height / this.HEIGHT) - zoom * (this.bbox.height / this.HEIGHT)) * (k);
+                nodes[(segmentX + 1) + (segmentY + 1) * (this.WIDTH + 1)].x =
+                    this.segs[i].sx3 * (1-k) + ((segmentX + 1) * (this.bbox.width / this.WIDTH) + zoom * (this.bbox.width / this.WIDTH)) * (k);
+                nodes[(segmentX + 1) + (segmentY + 1) * (this.WIDTH + 1)].y =
+                    this.segs[i].sy3 * (1-k) + ((segmentY + 1) * (this.bbox.height / this.HEIGHT) + zoom * (this.bbox.height / this.HEIGHT)) * (k);
+                nodes[segmentX + (segmentY + 1) * (this.WIDTH + 1)].x =
+                    this.segs[i].sx4 * (1-k) + (segmentX * (this.bbox.width / this.WIDTH) - zoom * (this.bbox.width / this.WIDTH)) * (k);
+                nodes[segmentX + (segmentY + 1) * (this.WIDTH + 1)].y =
+                    this.segs[i].sy4 * (1-k) + ((segmentY + 1) * (this.bbox.height / this.HEIGHT) + zoom * (this.bbox.height / this.HEIGHT)) * (k);
+
+                this.segs[i].sx1 = nodes[segmentX + segmentY * (this.WIDTH + 1)].x;
+                this.segs[i].sy1 = nodes[segmentX + segmentY * (this.WIDTH + 1)].y;
+                this.segs[i].sx2 = nodes[(segmentX + 1) + segmentY * (this.WIDTH + 1)].x;
+                this.segs[i].sy2 = nodes[(segmentX + 1) + segmentY * (this.WIDTH + 1)].y;
+                this.segs[i].sx3 = nodes[(segmentX + 1) + (segmentY + 1) * (this.WIDTH + 1)].x;
+                this.segs[i].sy3 = nodes[(segmentX + 1) + (segmentY + 1) * (this.WIDTH + 1)].y;
+                this.segs[i].sx4 = nodes[segmentX + (segmentY + 1) * (this.WIDTH + 1)].x;
+                this.segs[i].sy4 = nodes[segmentX + (segmentY + 1) * (this.WIDTH + 1)].y;
+            }
+
+            mousemove(e) {
+                this.mx = e.clientX - 10;
+                this.my = e.clientY - 10;
+                this.simulation.alpha(1);
+                this.simulation.restart();
+                //this.simulation.force("center", d3.forceCenter(this.mx, this/my));
+            }
+        }
+
+        const grid = new Grid();
+
+        function onLoad() {
+            grid.init();
+        }
+        function onMouseMove(e) {
+            grid.mousemove(e);
+        }
+        </script>
+    </head>
+
+    <body onload="onLoad()" onmousemove="onMouseMove(event)">
+        <svg id="grid" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+            </defs>
+        </svg>
+    </body>
+</html>
